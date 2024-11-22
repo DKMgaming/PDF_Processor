@@ -5,6 +5,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import pinecone
+from pinecone import Pinecone, ServerlessSpec
 from tqdm import tqdm
 import torch
 from transformers import AutoTokenizer, AutoModel
@@ -95,10 +96,25 @@ class PDFProcessor:
     def __init__(self, pinecone_api_key: str, pinecone_environment: str, index_name: str):
         self.embeddings = E5MultilingualEmbeddings()
         
-        pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment)
-        if index_name not in pinecone.list_indexes():
-            pinecone.create_index(index_name, dimension=1024)
-        self.index = pinecone.Index(index_name)
+        # Khởi tạo Pinecone với cú pháp mới
+        pc = Pinecone(api_key=pinecone_api_key)
+        
+        # Kiểm tra xem index đã tồn tại chưa
+        try:
+            # Thử lấy index hiện có
+            self.index = pc.Index(index_name)
+        except:
+            # Nếu index chưa tồn tại, tạo mới
+            pc.create_index(
+                name=index_name,
+                dimension=1024,  # dimension cho E5-large
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud=pinecone_environment.split('-')[2],  # 'aws' hoặc 'gcp'
+                    region=pinecone_environment.split('-')[0]  # region
+                )
+            )
+            self.index = pc.Index(index_name)
 
     def extract_text_from_pdf(self, pdf_content: bytes) -> List[Dict]:
         doc = fitz.open(stream=pdf_content, filetype="pdf")
@@ -183,11 +199,15 @@ def main():
         st.session_state.drive_helper = GoogleDriveHelper()
         
     if 'processor' not in st.session_state:
-        st.session_state.processor = PDFProcessor(
-            pinecone_api_key=st.secrets["pinecone_api_key"],
-            pinecone_environment=st.secrets["pinecone_environment"],
-            index_name=st.secrets["pinecone_index_name"]
-        )
+        try:
+            st.session_state.processor = PDFProcessor(
+                pinecone_api_key=st.secrets["pinecone_api_key"],
+                pinecone_environment=st.secrets["pinecone_environment"],
+                index_name=st.secrets["pinecone_index_name"]
+            )
+        except Exception as e:
+            st.error(f"Error initializing Pinecone: {str(e)}")
+            return
     
     # Thêm Google Drive folder ID
     folder_id = st.text_input("Enter Google Drive Folder ID")
