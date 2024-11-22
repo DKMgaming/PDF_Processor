@@ -113,9 +113,8 @@ class PDFProcessor:
                     spec=ServerlessSpec(
                       cloud="aws",
                       region="us-east-1"
-                               ),
-                    deletion_protection="disabled"
-                )
+                                       ) 
+                               )
             
             # Kết nối đến index
             self.index = pc.Index(index_name)
