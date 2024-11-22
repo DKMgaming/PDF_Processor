@@ -109,7 +109,12 @@ class PDFProcessor:
                 pc.create_index(
                     name=index_name,
                     dimension=1024,  # dimension cho E5-large
-                    metric='cosine'
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                      cloud="aws",
+                      region="us-east-1"
+                               ),
+                    deletion_protection="disabled"
                 )
             
             # Kết nối đến index
