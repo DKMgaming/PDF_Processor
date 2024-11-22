@@ -101,20 +101,22 @@ class PDFProcessor:
         
         # Kiểm tra xem index đã tồn tại chưa
         try:
-            # Thử lấy index hiện có
-            self.index = pc.Index(index_name)
-        except:
-            # Nếu index chưa tồn tại, tạo mới
-            pc.create_index(
-                name=index_name,
-                dimension=1024,  # dimension cho E5-large
-                metric='cosine',
-                spec=ServerlessSpec(
-                    cloud=pinecone_environment.split('-')[2],  # 'aws' hoặc 'gcp'
-                    region=pinecone_environment.split('-')[0]  # region
+            # Lấy danh sách indexes hiện có
+            existing_indexes = pc.list_indexes()
+            
+            if index_name not in existing_indexes:
+                # Nếu index chưa tồn tại, tạo mới
+                pc.create_index(
+                    name=index_name,
+                    dimension=1024,  # dimension cho E5-large
+                    metric='cosine'
                 )
-            )
+            
+            # Kết nối đến index
             self.index = pc.Index(index_name)
+            
+        except Exception as e:
+            raise Exception(f"Failed to initialize Pinecone: {str(e)}")
 
     def extract_text_from_pdf(self, pdf_content: bytes) -> List[Dict]:
         doc = fitz.open(stream=pdf_content, filetype="pdf")
@@ -166,8 +168,9 @@ class PDFProcessor:
             vectors = []
             for j, (text, embedding, metadata) in enumerate(zip(texts, embeddings, metadatas)):
                 metadata['source'] = file_name
+                vector_id = f"{file_name}_chunk_{i+j}"
                 vectors.append({
-                    "id": f"{file_name}_chunk_{i+j}",
+                    "id": vector_id,
                     "values": embedding,
                     "metadata": {
                         "text": text,
@@ -175,8 +178,10 @@ class PDFProcessor:
                     }
                 })
             
-            self.index.upsert(vectors=vectors)
-
+            # Sửa lại cách upsert để phù hợp với Pinecone V2
+            self.index.upsert(
+                vectors=vectors
+            )
     def process_file(self, file_content: bytes, file_name: str):
         text_chunks = self.extract_text_from_pdf(file_content)
         semantic_chunks = self.create_semantic_chunks(text_chunks)
